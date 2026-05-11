@@ -12,6 +12,8 @@ The system shall provide an import function in the dashboard that allows the use
 
 The system shall create a weblink entry for each imported Firefox bookmark.
 
+The import format should be JSON
+
 The system shall assign the category "Imported" to every bookmark that is imported from Firefox.
 
 ### Acceptance Criteria

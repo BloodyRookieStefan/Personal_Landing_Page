@@ -18,6 +18,14 @@ If the storage file has changed, the system shall prompt the user to confirm whe
 
 The system shall write every newly created weblink from the website back to the storage file.
 
+The storage system should be in JSON format. It must work with Firefox, Google Chrom, Edge
+
+The user can save the bookmarks on the disk
+
+The system shal detect a change in the saved bookmarks and ask the user if he wants to import the new version
+
+The storage system shall link and remember which JSON has been loaded the last time.
+
 ### Acceptance Criteria
 1. Weblink data is stored in a file and not exclusively in browser storage.
 2. The file uses a structured format that allows the system to read and write weblink records reliably.

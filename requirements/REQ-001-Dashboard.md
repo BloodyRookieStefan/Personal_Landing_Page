@@ -26,6 +26,14 @@ The system shall allow the user to switch the user interface language between Ge
 
 The system shall provide a compact display mode that presents weblinks in a list-like layout from left to right.
 
+The compact mode shows the weblinks in a "row" display format
+
+Weblinks can be pinned and unpinned
+
+Pinned is a new fixed Cathegory 
+
+Pinned links are highlighted orange
+
 The system shall persist all user interface settings in the browser so that the selected preferences are restored when the application is reopened in the same browser.
 
 The system shall display each weblink as a modern tile containing the weblink name, its category, and an optional comment if a comment has been provided.

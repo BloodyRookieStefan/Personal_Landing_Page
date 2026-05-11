@@ -1,145 +1,182 @@
-# Personal Landing Page
+# Personal Dashboard
 
-![React 18.3.1](https://img.shields.io/badge/React-18.3.1-20232A?logo=react)
-![Vite 5.2.0](https://img.shields.io/badge/Vite-5.2.0-646CFF?logo=vite)
-![TypeScript 5.4.5](https://img.shields.io/badge/TypeScript-5.4.5-3178C6?logo=typescript&logoColor=white)
-![Vitest 1.4.0](https://img.shields.io/badge/Vitest-1.4.0-6E9F18?logo=vitest&logoColor=white)
-![Playwright 1.42.0](https://img.shields.io/badge/Playwright-1.42.0-2EAD33?logo=playwright&logoColor=white)
+A fully static personal dashboard for managing categorized weblinks.
+Opens directly from an HTML file — no server required.
 
-A React and TypeScript bookmark dashboard for managing categorized weblinks with file-based persistence, Firefox bookmark import, localization, and theme support.
+---
 
-## Features
+## Quick Start
 
-- Category sidebar on the left and weblink tiles on the right
-- Light and dark theme switching
-- English and German UI
-- Compact list-like display mode
-- Create, edit, and organize weblinks by category
-- Protected default categories: `Imported` and `Not defined`
-- File-based JSON storage with synchronization prompt on external changes
-- Firefox bookmark HTML import
-- Unit, integration, and UI test coverage with Vitest and Playwright
-
-## Tech Stack
-
-- React 18
-- Vite 5
-- TypeScript 5
-- idb-keyval for browser-side preference and sync metadata persistence
-- File System Access API for primary file storage
-- Vitest and Testing Library for unit and integration tests
-- Playwright for browser UI tests
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18 or newer
-- npm
-
-### Install
+### 1. Install build tools (one-time)
 
 ```bash
 npm install
 ```
 
-### Run the app
+### 2. Build the JavaScript bundle
 
 ```bash
-npm run dev
-```
-
-Open the application at `http://localhost:5173`.
-
-Do not open `index.html` directly in the browser. The project is a Vite application and must run through the dev server.
-
-## Available Scripts
-
-```bash
-npm run dev
 npm run build
-npm run preview
-npm test
-npm run test:watch
-npm run test:ui
 ```
 
-## Storage Model
+### 3. Open the dashboard
 
-The application stores bookmark data in a structured JSON file instead of using browser storage as the primary data source.
+Open `index.html` directly in your browser (Chrome or Edge recommended for full
+file-system write support):
 
-- Main storage file: `storage/weblinks.json`
-- Browser storage is only used for UI preferences and synchronization metadata
-- On startup, the app checks whether the underlying file changed since the last synchronized state
-- If a change is detected, the user is asked whether the updated file should be synchronized into the current app state
+- **Windows:** double-click `index.html`, or drag it into your browser
+- **macOS / Linux:** `open index.html` or `xdg-open index.html`
 
-Current storage container example:
+No dev server is needed.
+
+---
+
+## First-Run: Connecting the Storage File
+
+On first launch the dashboard shows a **"Connect Storage File"** overlay.
+
+| Action | Description |
+|--------|-------------|
+| **Select File** | Choose an existing `weblinks.json` from your machine |
+| **Create New File** | Create a new empty `weblinks.json` via a system save dialog |
+
+A pre-populated empty file is included at `weblinks.json` in the project root —
+you can point the picker there to get started immediately.
+
+> **Browser support:** The dashboard works in **Firefox**, **Chrome 86+**, and **Edge 86+**.
+>
+> Chrome and Edge support the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_Access_API):
+> the file handle is stored in IndexedDB and the file reopens automatically on
+> every page reload. If the handle permission has expired, the dashboard loads
+> from its IndexedDB data cache and shows a **Reconnect** button in the toolbar.
+>
+> Firefox does not support the File System Access API and uses a manual
+> import/export workflow: select a JSON file via the **Import JSON File** button
+> on the connect screen, and use the **Save File** toolbar button to download
+> the updated file back to disk after making changes.
+> The last connected file name and its identity (name, size, last-modified) are
+> remembered in `localStorage` so the reconnect screen can name the expected
+> file on the next page load.
+
+---
+
+## Page-Load Change Detection
+
+Every time the page reloads and reconnects to the storage file, the dashboard
+computes a content hash of the file and compares it to the hash stored from the
+last successful sync (persisted in `localStorage`).
+
+- **No change / first load** – the file loads silently and the new hash is stored.
+- **Change detected** – a dialog asks whether to import the updated contents.
+  - **Import** – replaces the in-memory state with the file data and records the new hash.
+  - **Keep current** – leaves the current state unchanged; the next reload will prompt again.
+- **Different file selected** – detected via file name, size, and `lastModified`; loads silently without prompting and establishes a new sync baseline.
+
+On Chrome/Edge the comparison runs automatically after the stored handle is
+restored. On Firefox you must reselect the file on each page load; the
+reconnect overlay names the last-used file to help you pick the right one.
+
+---
+
+## Storage File Format
 
 ```json
 {
   "version": 1,
-  "weblinks": [],
-  "categories": []
+  "categories": [
+    { "id": "...", "name": "Work", "icon": "briefcase", "isDefault": false }
+  ],
+  "weblinks": [
+    {
+      "id": "...",
+      "url": "https://example.com",
+      "name": "Example",
+      "icon": "globe",
+      "description": "An example site",
+      "category": "..."
+    }
+  ]
 }
 ```
 
-Persisted weblink records are written using the user-facing schema:
+The two protected categories **"Not defined"** (`not-defined`) and
+**"Imported"** (`imported`) are not stored in the file — they are always
+injected at runtime with fixed IDs.
+
+User settings (theme, language, compact mode, pinned weblinks) are persisted
+separately in `localStorage` and are never written to the JSON file.
+
+---
+
+## Firefox Bookmark Import
+
+1. In Firefox: **Bookmarks → Manage All Bookmarks → Import and Backup → Back Up to JSON**
+2. Save the `.json` file anywhere on your machine.
+3. In the dashboard click **"Import Firefox Bookmarks"** in the toolbar.
+4. Select the exported file or drag-and-drop it into the dialog.
+
+Every imported bookmark is automatically assigned to the **"Imported"** category.
+Duplicate URLs (already present in the dashboard) are skipped.
+
+### Expected Firefox JSON shape
+
+Firefox exports a single root object of type `text/x-moz-place-container`
+with nested `children` arrays. Bookmark leaves have type `text/x-moz-place`
+and carry the URL in the `uri` field:
 
 ```json
 {
-  "URL": "https://example.com",
-  "Name": "Example",
-  "Icon": "Globe",
-  "Description": "Optional note",
-  "Category": "Imported"
+  "title": "Bookmarks Menu",
+  "type": "text/x-moz-place-container",
+  "children": [
+    {
+      "title": "My Site",
+      "type": "text/x-moz-place",
+      "uri": "https://mysite.com"
+    }
+  ]
 }
 ```
 
-## Testing
+The parser handles arbitrarily nested folder structures recursively.
 
-Run the automated checks with:
+---
+
+## Features
+
+| Feature | Details |
+|---------|---------|
+| **Categories** | Create and delete custom categories; assign any built-in icon |
+| **Protected categories** | "Not defined" and "Imported" are always present and cannot be deleted |
+| **Weblinks** | Add and edit weblinks; each has a URL, name, icon, optional description, and a category |
+| **Pinned weblinks** | Pin any weblink; a dedicated **Pinned** view in the sidebar lists all pinned links |
+| **Search** | Toolbar search filters the visible weblinks in real time |
+| **Icons** | 21 built-in Feather-style SVG icons: Globe, Star, Bookmark, Folder, Home, Briefcase, Graduation Cap, Code, Shopping Cart, Heart, Camera, Music Note, Video, Newspaper, Message Circle, Wrench, Shield, Cloud, Calendar, Link, Pin |
+| **Themes** | Light and dark mode; persisted in `localStorage` |
+| **Languages** | German (DE) and English (EN); persisted in `localStorage` |
+| **Compact mode** | Weblinks rendered as a horizontal flow of small rows instead of card tiles; persisted in `localStorage` |
+| **Sync detection** | On every page load the file hash is compared to the stored hash; if the file changed externally the user is prompted before importing |
+| **IndexedDB cache** | The last loaded data is cached in IndexedDB so the dashboard can display content even before file permission is re-granted |
+| **Firefox import** | Recursive parser handles arbitrarily nested bookmark folder structures |
+| **Offline / no-server** | Fully static — no backend, no runtime build step |
+
+---
+
+## Development
 
 ```bash
+# Rebuild once
+npm run build
+
+# Watch mode (auto-rebuild on change)
+npm run watch
+
+# Run tests
 npm test
-npm run test:ui
 ```
 
-If Playwright browsers are not installed yet, install them with:
+Source files live in `assets/js/` as ES modules. The build entry point is
+`assets/js/app.js`; output is `assets/js/bundle.js` (IIFE format, ES2020
+target, bundled by [esbuild](https://esbuild.github.io/)).
 
-```bash
-npx playwright install
-```
-
-## Project Structure
-
-```text
-src/
-  app/          Application bootstrap and state
-  domain/       Business rules, models, defaults, validation
-  services/     Storage, import, i18n, and settings services
-  styles/       Global styles and theme tokens
-  ui/           Dashboard and form components
-tests/
-  integration/  Integration tests
-  ui/           Playwright UI tests
-  unit/         Unit tests
-storage/
-  weblinks.json Example storage file
-requirements/   Functional requirements
-architectural/  Planning, implementation, and review notes
-```
-
-## Functional Scope
-
-This project covers the following areas:
-
-- Dashboard rendering for categorized weblinks
-- Weblink creation and editing
-- Category management
-- File-backed persistence and sync detection
-- Firefox bookmark import
-- Localization and persisted UI preferences
-
-## License
-
-This project currently has no license file in the repository.
+Tests are located in `tests/` and run with [Vitest](https://vitest.dev/).
