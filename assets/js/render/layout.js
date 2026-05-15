@@ -1,6 +1,4 @@
-import { state, updateSettings } from '../state.js';
-import { t, applyTranslations } from '../i18n.js';
-import { byId, setVisible } from '../utils/dom.js';
+// layout.js
 
 // Forward declarations – set by app.js after all modules are loaded
 let _onAddWeblink       = null;
@@ -8,15 +6,17 @@ let _onManageCategories = null;
 let _onImportBookmarks  = null;
 let _onReconnectFile    = null;
 let _onSaveFile         = null;
+let _onExportJson       = null;
 let _onRenderSidebar    = null;
 let _onRenderWeblinks   = null;
 
-export function setLayoutCallbacks({
+function setLayoutCallbacks({
   onAddWeblink,
   onManageCategories,
   onImportBookmarks,
   onReconnectFile,
   onSaveFile,
+  onExportJson,
   onRenderSidebar,
   onRenderWeblinks,
 }) {
@@ -25,6 +25,7 @@ export function setLayoutCallbacks({
   _onImportBookmarks  = onImportBookmarks;
   _onReconnectFile    = onReconnectFile;
   _onSaveFile         = onSaveFile;
+  _onExportJson       = onExportJson;
   _onRenderSidebar    = onRenderSidebar;
   _onRenderWeblinks   = onRenderWeblinks;
 }
@@ -33,7 +34,7 @@ export function setLayoutCallbacks({
 // Apply theme
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function applyTheme(theme) {
+function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   const iconLight = byId('icon-theme-light');
   const iconDark  = byId('icon-theme-dark');
@@ -47,7 +48,7 @@ export function applyTheme(theme) {
 // Apply compact mode UI
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function applyCompactMode(compact) {
+function applyCompactMode(compact) {
   const btn       = byId('btn-compact');
   const iconOff   = byId('icon-compact-off');
   const iconOn    = byId('icon-compact-on');
@@ -60,7 +61,7 @@ export function applyCompactMode(compact) {
 // Update language label
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function updateLanguageLabel() {
+function updateLanguageLabel() {
   const label = byId('lang-label');
   if (label) {
     // Show the OTHER language as the toggle label (clicking switches to that lang)
@@ -72,7 +73,7 @@ export function updateLanguageLabel() {
 // Show / hide storage reconnect warning button
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function setReconnectVisible(visible) {
+function setReconnectVisible(visible) {
   const btn = byId('btn-reconnect-file');
   if (btn) {
     setVisible(btn, visible);
@@ -84,7 +85,7 @@ export function setReconnectVisible(visible) {
 // Show / hide unsaved-changes save button (manual / Firefox mode)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function setUnsavedVisible(visible) {
+function setUnsavedVisible(visible) {
   const btn = byId('btn-save-file');
   if (btn) {
     setVisible(btn, visible);
@@ -96,7 +97,7 @@ export function setUnsavedVisible(visible) {
 // Attach toolbar event listeners (idempotent – safe to call once)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function initToolbar() {
+function initToolbar() {
   byId('btn-theme')?.addEventListener('click', () => {
     const next = state.settings.theme === 'light' ? 'dark' : 'light';
     updateSettings({ theme: next });
@@ -138,6 +139,10 @@ export function initToolbar() {
 
   byId('btn-save-file')?.addEventListener('click', () => {
     _onSaveFile?.();
+  });
+
+  byId('btn-export-json')?.addEventListener('click', () => {
+    _onExportJson?.();
   });
 
   const searchInput = byId('input-search');

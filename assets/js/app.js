@@ -1,65 +1,48 @@
 /**
  * app.js – Bootstrap entry point for the Personal Dashboard.
  *
- * Initialization order:
- *   1. Load persisted settings (theme, language, compact mode)
- *   2. Apply theme + language immediately to prevent FOUC
- *   3. Initialize toolbar event listeners
- *   4. Storage setup (browser-capability-based):
- *      - Chrome/Edge (direct): try stored handle → load data
- *      - Firefox (manual): show overlay for file import or fresh start
- *   5. Check for external file changes (sync prompt)
- *   6. Render sidebar + weblinks
+ * Storage strategy:
+ * - HTTP(S): fetch ./weblinks.json on every load; poll every 15 s.
+ * - file://:  Firefox (and other browsers) block both fetch() and XHR for
+ *   file:// URLs due to CORS (security.fileuri.strict_origin_policy).
+ *   Instead, index.html loads <script src="weblinks.js"> which sets
+ *   window.__WEBLINKS_DATA__ without any CORS check.  When saving, the
+ *   dashboard downloads a weblinks.js file (JS wrapper) so the next reload
+ *   picks up the new data automatically.
+ *   For Chrome/Edge (which support the File System Access API), direct
+ *   read/write to a file handle is used as a fallback when weblinks.js is
+ *   absent.
  */
 
-import { state, loadPersistedSettings, loadPersistedStorageMeta, persistStorageMeta, togglePinWeblink } from './state.js';
-import { t, applyTranslations } from './i18n.js';
-import {
-  applyTheme,
-  applyCompactMode,
-  updateLanguageLabel,
-  initToolbar,
-  setLayoutCallbacks,
-  setReconnectVisible,
-  setUnsavedVisible,
-} from './render/layout.js';
-import { renderSidebar, setSidebarCallbacks } from './render/sidebar.js';
-import { renderWeblinks, setWeblinkCallbacks } from './render/weblinks.js';
-import { showToast } from './render/dialogs.js';
-import {
-  canDirectWrite,
-  getStoredHandle,
-  verifyPermission,
-  pickExistingFile,
-  createNewFile,
-  loadFromHandle,
-  saveToHandle,
-  importFromFileInput,
-  exportToFile,
-  persistData,
-  setOnUnsavedChange,
-  saveDataCache,
-  loadDataCache,
-} from './storage.js';
-import { checkAndPromptSync } from './features/sync-prompt.js';
-import { openAddWeblinkDialog, openEditWeblinkDialog } from './features/weblink-form.js';
-import { openCategoryManager } from './features/category-manager.js';
-import { openBookmarkImportDialog } from './features/bookmark-import.js';
-import { byId, setVisible } from './utils/dom.js';
+// app.js – all dependencies loaded as plain scripts via index.html
+
+// ─────────────────────────────────────────────────────────────────────────────
+// File-change handler (watcher callback)
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function onFileChanged({ data, hash }) {
+  state.categories = data.categories;
+  state.weblinks   = data.weblinks;
+  if (data.pinnedWeblinks !== null) {
+    state.settings.pinnedWeblinks = data.pinnedWeblinks;
+    persistSettings();
+  }
+  storeLastSyncHash(hash);
+  await saveDataCache(state.categories, state.weblinks);
+  renderSidebar();
+  renderWeblinks();
+  showToast(t('sync.updated'), 'success');
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Bootstrap
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function init() {
-  // 1. Load persisted settings before any render
+  // 1. Load persisted settings (theme, language, compact mode)
   loadPersistedSettings();
 
-  // 2. Load persisted storage connection metadata so storage mode and last
-  //    file name are available when the storage setup flow begins
-  loadPersistedStorageMeta();
-
-  // 2. Apply theme + lang immediately
+  // 2. Apply theme + language immediately to prevent FOUC
   applyTheme(state.settings.theme);
   applyTranslations();
   updateLanguageLabel();
@@ -86,7 +69,11 @@ async function init() {
       await exportToFile(state.categories, state.weblinks, state.storageFileName);
       showToast(t('toast.saved'), 'success');
     },
-    onReconnectFile:  () => reconnectFile(),
+    onExportJson: async () => {
+      await exportToFile(state.categories, state.weblinks, state.storageFileName);
+      showToast(t('toast.saved'), 'success');
+    },
+    onReconnectFile:  () => {},
     onRenderSidebar:  () => renderSidebar(),
     onRenderWeblinks: () => renderWeblinks(),
   });
@@ -106,268 +93,148 @@ async function init() {
       renderSidebar();
       renderWeblinks();
     },
+    onDeleteWeblink: async (weblinkId) => {
+      state.weblinks = state.weblinks.filter(w => w.id !== weblinkId);
+      await persistData();
+      renderSidebar();
+      renderWeblinks();
+      showToast(t('toast.deleted'), 'success');
+    },
   });
 
   initToolbar();
 
-  // 5. Initial renders (empty state until file is loaded)
+  // 5. Restore cached data from IndexedDB so the UI is not empty on reload
+  const cached = await loadDataCache();
+  if (cached) {
+    state.categories = cached.categories;
+    state.weblinks   = cached.weblinks;
+  }
+
+  // If weblinks.js was loaded via <script src="weblinks.js">, apply its data.
+  // This is the primary data source on file:// where fetch/XHR is blocked by CORS.
+  // On HTTP(S) fetchStaticFile() below will override this with the authoritative source.
+  if (window.__WEBLINKS_DATA__) {
+    const wlData     = normalizeData(window.__WEBLINKS_DATA__);
+    state.categories = wlData.categories;
+    state.weblinks   = wlData.weblinks;
+    if (wlData.pinnedWeblinks !== null) {
+      state.settings.pinnedWeblinks = wlData.pinnedWeblinks;
+      persistSettings();
+    }
+    const canonical  = serializePayload(wlData.categories, wlData.weblinks, wlData.pinnedWeblinks ?? []);
+    const hash       = await hashString(canonical);
+    storeLastSyncHash(hash);
+    await saveDataCache(state.categories, state.weblinks);
+  }
+
+  state.storageMode     = 'static';
+  state.storageReady    = true;
+  state.storageFileName = DEFAULT_STORAGE_FILE_NAME;
+
   renderSidebar();
   renderWeblinks();
 
-  // 6. Storage setup – branch by browser capability
-  if (canDirectWrite()) {
-    // Chrome / Edge: try to restore a previously stored file handle
-    const storedHandle = await getStoredHandle();
-    if (storedHandle) {
-      // Only query permission silently – requestPermission needs a user gesture
-      let alreadyGranted = false;
-      try {
-        alreadyGranted = (await storedHandle.queryPermission({ mode: 'readwrite' })) === 'granted';
-      } catch { /* ignore */ }
-
-      if (alreadyGranted) {
-        await connectAndLoad(storedHandle);
-      } else {
-        // Permission needs a user gesture – load from cache if available
-        const cached = await loadDataCache();
-        if (cached) {
-          await loadFromDataCache(cached);
-          setReconnectVisible(true); // reconnect button triggers permission prompt
-        } else {
-          // First run or cache lost – show setup overlay
-          setReconnectVisible(true);
-          showStorageSetup();
-        }
-      }
-    } else {
-      // No stored handle – check for orphaned cache (e.g. handle cleared by browser)
-      const cached = await loadDataCache();
-      if (cached) {
-        await loadFromDataCache(cached);
-        setReconnectVisible(true);
-      } else {
-        showStorageSetup();
-      }
+  // 6. Load data from storage.
+  // - HTTP(S)              : fetch ./weblinks.json with cache-busting.
+  // - file:// + Chrome/Edge: File System Access API, full read/write.
+  // - file:// + Firefox    : File System Access API, read-only.
+  //   Firefox 111+ supports showOpenFilePicker but not showSaveFilePicker.
+  //   The user picks weblinks.json once; the handle is stored in IndexedDB
+  //   and reused on every F5, so the page always reflects the current file.
+  const fetchResult = await fetchStaticFile();
+  if (fetchResult) {
+    // HTTP(S): fetch succeeded.
+    state.categories = fetchResult.data.categories;
+    state.weblinks   = fetchResult.data.weblinks;
+    if (fetchResult.data.pinnedWeblinks !== null) {
+      state.settings.pinnedWeblinks = fetchResult.data.pinnedWeblinks;
+      persistSettings();
     }
-  } else {
-    // Firefox: direct file handle not available
-    const cached = await loadDataCache();
-    if (cached) {
-      await loadFromDataCache(cached);
-      setReconnectVisible(true); // allow user to re-import/export
-    } else {
-      showStorageSetupManual();
-    }
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Load from IndexedDB data cache (skips file dialog)
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function loadFromDataCache({ categories, weblinks }) {
-  state.categories   = categories || [];
-  state.weblinks     = weblinks   || [];
-  state.storageReady = true;
-  // Keep storageMode/storageFileName from loadPersistedStorageMeta(); file
-  // handle is not yet available – reconnect button lets the user re-grant it.
-  renderSidebar();
-  renderWeblinks();
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Storage-setup overlay – Chrome/Edge (direct mode)
-// ─────────────────────────────────────────────────────────────────────────────
-
-function showStorageSetup() {
-  const overlay = byId('storage-setup');
-  if (!overlay) return;
-
-  // Show the direct-mode actions, hide the manual-mode actions
-  setVisible(byId('storage-direct-actions'), true);
-  setVisible(byId('storage-manual-actions'), false);
-  setVisible(overlay, true);
-
-  byId('btn-pick-file')?.addEventListener('click', async () => {
-    const handle = await pickExistingFile();
-    if (handle) {
-      setVisible(overlay, false);
-      await connectAndLoad(handle);
-    }
-  });
-
-  byId('btn-create-file')?.addEventListener('click', async () => {
-    const handle = await createNewFile();
-    if (handle) {
-      setVisible(overlay, false);
-      state.fileHandle      = handle;
-      state.storageMode     = 'direct';
-      state.storageFileName = handle.name || null;
-      state.storageFileMeta = null;
-      state.storageReady    = true;
-      setReconnectVisible(false);
-      persistStorageMeta();
-      try {
-        await saveToHandle(handle, state.categories, state.weblinks);
-      } catch {
-        showToast(t('storage.saveError'), 'error');
-      }
-      showToast(t('storage.connected'), 'success');
-      renderSidebar();
-      renderWeblinks();
-    }
-  });
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Storage-setup overlay – Firefox (manual mode)
-// ─────────────────────────────────────────────────────────────────────────────
-
-function showStorageSetupManual() {
-  const overlay = byId('storage-setup');
-  if (!overlay) return;
-
-  // Show the manual-mode actions, hide the direct-mode actions
-  setVisible(byId('storage-direct-actions'), false);
-  setVisible(byId('storage-manual-actions'), true);
-  setVisible(overlay, true);
-
-  // When a previous manual connection is remembered, update the overlay text
-  // to name the last file and explain that the user must reselect it.
-  const lastFileName = state.storageFileName;
-  if (lastFileName) {
-    const titleEl = byId('storage-setup-title');
-    if (titleEl) titleEl.textContent = t('storage.reconnectTitle');
-    const descEl = overlay.querySelector('[data-i18n="storage.setupDescription"]');
-    if (descEl) descEl.textContent = t('storage.reconnectDescription', { name: lastFileName });
-    const importBtnSpan = byId('btn-import-file-manual')?.querySelector('[data-i18n="storage.importFile"]');
-    if (importBtnSpan) importBtnSpan.textContent = t('storage.reconnectFile');
-  }
-
-  byId('btn-import-file-manual')?.addEventListener('click', async () => {
-    const result = await importFromFileInput();
-    if (!result) return; // user cancelled
-    if (result.error === 'invalid-json') {
-      showToast(t('import.error'), 'error');
-      return;
-    }
-    setVisible(overlay, false);
-    await connectAndLoadManual(result);
-  });
-
-  byId('btn-start-fresh')?.addEventListener('click', async () => {
-    setVisible(overlay, false);
-    state.storageMode     = 'manual';
-    state.storageReady    = true;
-    state.categories      = [];
-    state.weblinks        = [];
-    state.storageFileName = null;
-    state.storageFileMeta = null;
-    state.unsavedChanges  = false;
-    persistStorageMeta();
-    await saveDataCache([], []);
-    showToast(t('storage.connected'), 'success');
-    renderSidebar();
-    renderWeblinks();
-  });
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Connect to a direct file handle and load data (Chrome/Edge)
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function connectAndLoad(handle) {
-  try {
-    const { data, hash } = await loadFromHandle(handle);
-
-    state.fileHandle      = handle;
-    state.storageMode     = 'direct';
-    state.storageFileName = handle.name || null;
-    state.storageFileMeta = null; // direct mode uses IndexedDB handle, not file identity
-    state.storageReady    = true;
-    persistStorageMeta();
-
-    setReconnectVisible(false);
-    showToast(t('storage.connected'), 'success');
-
-    await checkAndPromptSync(hash, data);
-    // Cache data after checkAndPromptSync has populated state.categories/weblinks
+    storeLastSyncHash(fetchResult.hash);
     await saveDataCache(state.categories, state.weblinks);
     renderSidebar();
     renderWeblinks();
-  } catch {
-    showToast(t('storage.accessDenied'), 'error');
-    setReconnectVisible(true);
-  }
-}
+    startFetchWatcher(onFileChanged);
+  } else if (canDirectWrite()) {
+    // file:// + Chrome/Edge: full read/write via File System Access API.
+    let handle = await getStoredHandle();
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Connect from a manually imported file (Firefox)
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function connectAndLoadManual({ data, hash, fileName, fileSize, fileLastModified }) {
-  // Capture the remembered file identity BEFORE overwriting state so we can
-  // determine whether the user reselected the same file or chose a different one.
-  const rememberedMeta = state.storageFileMeta;
-  const newMeta = (fileName && fileSize !== undefined)
-    ? { name: fileName, size: fileSize, lastModified: fileLastModified }
-    : null;
-
-  // Two files are considered the same when name, byte-size, and last-modified
-  // timestamp all match.  Any mismatch means a different file was selected and
-  // the stored sync hash from the previous file must not trigger a dialog.
-  const isSameFile = !!(rememberedMeta && newMeta &&
-    rememberedMeta.name         === newMeta.name &&
-    rememberedMeta.size         === newMeta.size &&
-    rememberedMeta.lastModified === newMeta.lastModified);
-
-  state.storageMode     = 'manual';
-  state.storageReady    = true;
-  state.storageFileName = fileName || null;
-  state.storageFileMeta = newMeta;
-  state.unsavedChanges  = false;
-  persistStorageMeta();
-
-  showToast(t('storage.connected'), 'success');
-
-  await checkAndPromptSync(hash, data, { isSameFile });
-  // Cache data after checkAndPromptSync has populated state.categories/weblinks
-  await saveDataCache(state.categories, state.weblinks);
-  renderSidebar();
-  renderWeblinks();
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Reconnect file (called by toolbar warning button – direct mode only)
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function reconnectFile() {
-  if (canDirectWrite()) {
-    // First try the stored handle (avoids forcing the user to re-pick the file)
-    const storedHandle = await getStoredHandle();
-    let handle = null;
-    if (storedHandle) {
-      const granted = await verifyPermission(storedHandle);
-      if (granted) handle = storedHandle;
+    // Check if stored handle still has read permission (expires on browser restart)
+    if (handle) {
+      const perm = await handle.queryPermission({ mode: 'read' });
+      if (perm !== 'granted') handle = null; // will re-pick below
     }
+
     if (!handle) {
+      // First visit or permission expired – ask the user to pick once
+      showToast(t('storage.pickFileHint'), 'info');
       handle = await pickExistingFile();
     }
+
     if (handle) {
-      setReconnectVisible(false);
-      const overlay = byId('storage-setup');
-      if (overlay) setVisible(overlay, false);
-      await connectAndLoad(handle);
+      try {
+        const { data, hash } = await loadFromHandle(handle);
+        state.categories  = data.categories;
+        state.weblinks    = data.weblinks;
+        if (data.pinnedWeblinks !== null) {
+          state.settings.pinnedWeblinks = data.pinnedWeblinks;
+          persistSettings();
+        }
+        state.fileHandle  = handle;
+        state.storageMode = 'direct';
+        storeLastSyncHash(hash);
+        await saveDataCache(state.categories, state.weblinks);
+        renderSidebar();
+        renderWeblinks();
+        startHandleWatcher(handle, onFileChanged);
+      } catch {
+        showToast(t('storage.accessDenied'), 'error');
+      }
     }
-  } else {
-    // Firefox: re-import via file picker
-    const result = await importFromFileInput();
-    if (!result) return;
-    if (result.error === 'invalid-json') { showToast(t('import.error'), 'error'); return; }
-    const overlay = byId('storage-setup');
-    if (overlay) setVisible(overlay, false);
-    await connectAndLoadManual(result);
+  } else if (canDirectRead()) {
+    // file:// + Firefox: read-only File System Access API.
+    // showOpenFilePicker works; showSaveFilePicker does not → saves via download.
+    let handle = await getStoredHandle();
+
+    if (handle) {
+      const perm = await handle.queryPermission({ mode: 'read' });
+      if (perm !== 'granted') {
+        try {
+          const req = await handle.requestPermission({ mode: 'read' });
+          if (req !== 'granted') handle = null;
+        } catch {
+          handle = null; // needs user gesture; will re-pick
+        }
+      }
+    }
+
+    if (!handle) {
+      // First visit or permission expired – ask the user to pick weblinks.json.
+      showToast(t('storage.pickFileHint'), 'info');
+      handle = await pickExistingFile();
+    }
+
+    if (handle) {
+      try {
+        const { data, hash } = await loadFromHandle(handle);
+        state.categories = data.categories;
+        state.weblinks   = data.weblinks;
+        if (data.pinnedWeblinks !== null) {
+          state.settings.pinnedWeblinks = data.pinnedWeblinks;
+          persistSettings();
+        }
+        storeLastSyncHash(hash);
+        await saveDataCache(state.categories, state.weblinks);
+        renderSidebar();
+        renderWeblinks();
+        startHandleWatcher(handle, onFileChanged);
+      } catch {
+        showToast(t('storage.accessDenied'), 'error');
+      }
+    }
   }
+  // else: no supported storage API → only IndexedDB cache is shown
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

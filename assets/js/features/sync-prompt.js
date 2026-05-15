@@ -1,6 +1,4 @@
-import { state, getStoredSyncHash, storeLastSyncHash } from '../state.js';
-import { t } from '../i18n.js';
-import { openModal, closeModal, showToast } from '../render/dialogs.js';
+// sync-prompt.js
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sync-change detection
@@ -19,7 +17,7 @@ import { openModal, closeModal, showToast } from '../render/dialogs.js';
  * @param {boolean} [options.isSameFile=true] – false when a different file identity is detected;
  *   skips hash comparison and loads silently so the new file establishes its own baseline.
  */
-export async function checkAndPromptSync(currentHash, freshData, options = {}) {
+async function checkAndPromptSync(currentHash, freshData, options = {}) {
   const { isSameFile = true } = options;
   const storedHash = getStoredSyncHash();
 

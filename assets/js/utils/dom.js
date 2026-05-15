@@ -3,7 +3,7 @@
  */
 
 /** Create an element with optional properties */
-export function el(tag, attrs = {}, children = []) {
+function el(tag, attrs = {}, children = []) {
   const elem = document.createElement(tag);
   for (const [key, val] of Object.entries(attrs)) {
     if (key === 'class') {
@@ -30,22 +30,22 @@ export function el(tag, attrs = {}, children = []) {
 }
 
 /** Clear all children from a DOM element */
-export function clearChildren(elem) {
+function clearChildren(elem) {
   while (elem.firstChild) elem.removeChild(elem.firstChild);
 }
 
 /** Show or hide an element using the 'hidden' utility class */
-export function setVisible(elem, visible) {
+function setVisible(elem, visible) {
   elem.classList.toggle('hidden', !visible);
 }
 
 /** Safely set inner HTML (plain text only; use innerHTML directly for trusted SVG) */
-export function setText(elem, text) {
+function setText(elem, text) {
   elem.textContent = text;
 }
 
 /** Return the element with the given id, throws if missing in dev */
-export function byId(id) {
+function byId(id) {
   return document.getElementById(id);
 }
 
@@ -53,7 +53,7 @@ export function byId(id) {
  * Trap focus within a container element.
  * Returns a cleanup function that removes the listener.
  */
-export function trapFocus(container) {
+function trapFocus(container) {
   const focusable = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
   function handleKeydown(e) {

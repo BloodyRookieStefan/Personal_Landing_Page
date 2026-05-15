@@ -1,4 +1,4 @@
-import { state } from './state.js';
+// i18n.js
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Translation dictionaries
@@ -27,6 +27,7 @@ const translations = {
     'weblink.edit':               'Bearbeiten',
     'weblink.pin':                'Anheften',
     'weblink.unpin':              'Lösen',
+    'weblink.delete':             'Löschen',
     'weblink.moreActions':        'Weitere Aktionen',
 
     // Forms – shared
@@ -52,6 +53,9 @@ const translations = {
     'category.name':              'Kategoriename',
     'category.icon':              'Symbol',
     'category.delete':            'Löschen',
+    'category.rename':            'Umbenennen',
+    'category.moveUp':            'Nach oben',
+    'category.moveDown':          'Nach unten',
     'category.createLabel':       'Neue Kategorie',
     'category.protected':         'Geschützte Kategorie – kann nicht gelöscht werden.',
     'category.defaultBadge':      'Standard',
@@ -75,17 +79,19 @@ const translations = {
     'storage.importFile':         'JSON-Datei importieren',
     'storage.startFresh':         'Neu starten',
     'storage.saveFile':           'Datei speichern',
+    'storage.exportJson':         'JSON exportieren',
     'storage.unsavedChanges':     'Ungespeicherte Änderungen – klicken zum Exportieren',
     'storage.reconnect':          'Datei neu verbinden',
     'storage.connected':          'Speicherdatei verbunden.',
     'storage.accessDenied':       'Dateizugriff verweigert. Verbinde die Speicherdatei erneut.',
     'storage.saveError':          'Fehler beim Speichern.',
-
-    // Sync prompt
+    'storage.pickFileHint':        'Bitte wähle einmalig deine weblinks.json aus, damit sie automatisch geladen werden kann.',
+    'storage.fileProtocolWarning': 'weblinks.json konnte nicht geladen werden. Öffne die Seite über einen lokalen HTTP-Server (z. B. VS Code Live Server), kein file://-Protokoll.',
     'sync.title':                 'Datei geändert',
     'sync.message':               'Die Speicherdatei wurde seit der letzten Synchronisierung extern geändert. Möchtest du die aktualisierten Daten importieren?',
     'sync.confirm':               'Importieren',
     'sync.cancel':                'Aktuelle behalten',
+    'sync.updated':               'Datei aktualisiert – Ansicht aktualisiert.',
 
     // Import
     'import.title':               'Firefox importieren',
@@ -134,6 +140,7 @@ const translations = {
     'weblink.edit':               'Edit',
     'weblink.pin':                'Pin',
     'weblink.unpin':              'Unpin',
+    'weblink.delete':             'Delete',
     'weblink.moreActions':        'More actions',
 
     'form.save':                  'Save',
@@ -155,6 +162,9 @@ const translations = {
     'category.name':              'Category Name',
     'category.icon':              'Icon',
     'category.delete':            'Delete',
+    'category.rename':            'Rename',
+    'category.moveUp':            'Move up',
+    'category.moveDown':          'Move down',
     'category.createLabel':       'New Category',
     'category.protected':         'Protected category – cannot be deleted.',
     'category.defaultBadge':      'Default',
@@ -176,16 +186,20 @@ const translations = {
     'storage.importFile':         'Import JSON File',
     'storage.startFresh':         'Start Fresh',
     'storage.saveFile':           'Save File',
+    'storage.exportJson':         'Export JSON',
     'storage.unsavedChanges':     'Unsaved changes – click to export',
     'storage.reconnect':          'Reconnect File',
     'storage.connected':          'Storage file connected.',
     'storage.accessDenied':       'File access was denied. Please reconnect the storage file.',
     'storage.saveError':          'Failed to save changes to the file.',
+    'storage.pickFileHint':        'Please select your weblinks.json once so it can be loaded automatically.',
+    'storage.fileProtocolWarning': 'Could not load weblinks.json. Open the page via a local HTTP server (e.g. VS Code Live Server) – file:// protocol is not supported.',
 
     'sync.title':                 'File Changed',
     'sync.message':               'The storage file has changed since the last sync. Do you want to import the updated data?',
     'sync.confirm':               'Import',
     'sync.cancel':                'Keep current',
+    'sync.updated':               'File updated – view refreshed.',
 
     'import.title':               'Import Firefox',
     'import.description':         'Export your Firefox bookmarks via Bookmarks → Manage All Bookmarks → Import and Backup → Back Up to JSON and select the file here.',
@@ -216,7 +230,7 @@ const translations = {
  * Translate a key into the current locale.
  * Supports simple template vars like {n} and {name}.
  */
-export function t(key, vars) {
+function t(key, vars) {
   const locale = state.settings.language || 'de';
   const dict   = translations[locale] || translations['de'];
   let text     = dict[key] ?? translations['de'][key] ?? key;
@@ -232,7 +246,7 @@ export function t(key, vars) {
  * Apply translations to all elements with [data-i18n] attributes.
  * Runs on language switch to update static HTML text nodes.
  */
-export function applyTranslations() {
+function applyTranslations() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
     el.textContent = t(key);
@@ -249,4 +263,4 @@ export function applyTranslations() {
   document.documentElement.lang = state.settings.language;
 }
 
-export { translations };
+// translations is a global const defined above

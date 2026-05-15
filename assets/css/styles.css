@@ -654,15 +654,13 @@ svg {
    PINNED WEBLINK INDICATORS
    ────────────────────────────────────────────────────────────────────────────── */
 .weblink-card--pinned {
-  border-color: var(--color-pinned);
+  border: 2px solid var(--color-pinned);
   background: var(--color-pinned-light);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-pinned) 25%, transparent), var(--card-shadow);
 }
 
-.weblink-row--pinned {
-  border-color: var(--color-pinned);
-  background: var(--color-pinned-light);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-pinned) 20%, transparent), var(--card-shadow);
+.weblink-card--pinned:hover {
+  border-color: var(--color-pinned-hover);
 }
 
 /* Pinned sidebar entry accent */
@@ -701,6 +699,16 @@ svg {
   border-color: var(--color-accent);
   background: var(--color-accent-light);
   box-shadow: 0 2px 10px rgba(91,115,245,0.12);
+}
+
+.weblink-row--pinned {
+  border: 2px solid var(--color-pinned);
+  background: var(--color-pinned-light);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-pinned) 25%, transparent), var(--card-shadow);
+}
+
+.weblink-row--pinned:hover {
+  border-color: var(--color-pinned-hover);
 }
 
 .weblink-row:focus-visible {
@@ -863,6 +871,18 @@ svg {
   height: 15px;
   color: var(--color-text-muted);
   flex-shrink: 0;
+}
+
+.context-menu-item--danger {
+  color: var(--color-danger, #e05555);
+}
+
+.context-menu-item--danger svg {
+  color: var(--color-danger, #e05555);
+}
+
+.context-menu-item--danger:hover {
+  background: rgba(224, 85, 85, 0.1);
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────

@@ -1,28 +1,26 @@
-import {
-  IDB_DB_NAME,
-  IDB_STORE_NAME,
-  IDB_HANDLE_KEY,
-  IDB_DATA_KEY,
-  DEFAULT_STORAGE_FILE_NAME,
-  STORAGE_VERSION,
-} from './config.js';
-import { normalizeData } from './schema.js';
-import { hashString } from './utils/hash.js';
-import { state, storeLastSyncHash } from './state.js';
+// storage.js
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Browser capability detection
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Returns true when the browser supports the File System Access API for
- * direct file read/write (Chrome 86+, Edge 86+).
- * Firefox does not support showSaveFilePicker, so it uses the manual path.
+ * Returns true when the browser supports full read/write File System Access
+ * (Chrome 86+, Edge 86+). Requires both showOpenFilePicker AND showSaveFilePicker.
  */
-export function canDirectWrite() {
+function canDirectWrite() {
   return typeof window !== 'undefined' &&
     typeof window.showOpenFilePicker === 'function' &&
     typeof window.showSaveFilePicker === 'function';
+}
+
+/**
+ * Returns true when the browser supports at least read-only File System Access
+ * via showOpenFilePicker (Firefox 111+, Chrome 86+, Edge 86+).
+ */
+function canDirectRead() {
+  return typeof window !== 'undefined' &&
+    typeof window.showOpenFilePicker === 'function';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -32,7 +30,7 @@ export function canDirectWrite() {
 let _onUnsavedChange = null;
 
 /** Register a callback that is called with (true|false) when unsaved state changes. */
-export function setOnUnsavedChange(cb) {
+function setOnUnsavedChange(cb) {
   _onUnsavedChange = cb;
 }
 
@@ -81,7 +79,7 @@ async function idbGet() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Persist categories + weblinks to IndexedDB so they survive page reloads. */
-export async function saveDataCache(categories, weblinks) {
+async function saveDataCache(categories, weblinks) {
   try {
     const db = await openDB();
     const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
@@ -96,7 +94,7 @@ export async function saveDataCache(categories, weblinks) {
  * Load the cached bookmark data from IndexedDB.
  * Returns { categories, weblinks } or null if no cache exists.
  */
-export async function loadDataCache() {
+async function loadDataCache() {
   try {
     const db  = await openDB();
     const tx  = db.transaction(IDB_STORE_NAME, 'readonly');
@@ -115,7 +113,7 @@ export async function loadDataCache() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Retrieve the previously stored file handle (may still need permission). */
-export async function getStoredHandle() {
+async function getStoredHandle() {
   return idbGet();
 }
 
@@ -123,7 +121,7 @@ export async function getStoredHandle() {
  * Verify – and if necessary request – readwrite permission for a handle.
  * Returns true if permission is granted.
  */
-export async function verifyPermission(handle) {
+async function verifyPermission(handle) {
   const opts = { mode: 'readwrite' };
   if ((await handle.queryPermission(opts)) === 'granted') return true;
   if ((await handle.requestPermission(opts)) === 'granted') return true;
@@ -134,8 +132,8 @@ export async function verifyPermission(handle) {
  * Open the system file picker so the user can choose an existing JSON file.
  * Stores the chosen handle in IndexedDB and returns it, or null on cancel/error.
  */
-export async function pickExistingFile() {
-  if (!canDirectWrite()) return null;
+async function pickExistingFile() {
+  if (!canDirectRead()) return null;
   try {
     const [handle] = await window.showOpenFilePicker({
       types:    [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
@@ -152,7 +150,7 @@ export async function pickExistingFile() {
  * Open the system save-file picker so the user can create a new JSON file.
  * Stores the chosen handle in IndexedDB and returns it, or null on cancel/error.
  */
-export async function createNewFile() {
+async function createNewFile() {
   if (!canDirectWrite()) return null;
   try {
     const handle = await window.showSaveFilePicker({
@@ -171,6 +169,90 @@ export async function createNewFile() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Static file fetch  (./weblinks.json from the same directory as index.html)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Load ./weblinks.json on HTTP(S) via fetch() with cache-busting.
+ * On file:// the File System Access API is used instead (see init in app.js),
+ * so this function simply returns null for file:// URLs.
+ * Returns { data, hash } or null when unavailable / invalid.
+ */
+async function fetchStaticFile() {
+  try {
+    if (window.location.protocol === 'file:') return null;
+    const url  = `./weblinks.json?t=${Date.now()}`;
+    const resp = await fetch(url, { cache: 'no-store' });
+    if (!resp.ok) return null;
+    const rawText = await resp.text();
+    let parsed;
+    try { parsed = JSON.parse(rawText); } catch { return null; }
+    const data      = normalizeData(parsed);
+    const canonical = serializePayload(data.categories, data.weblinks, data.pinnedWeblinks ?? []);
+    const hash      = await hashString(canonical);
+    return { data, hash };
+  } catch {
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// File change watchers
+// ─────────────────────────────────────────────────────────────────────────────
+
+const WATCH_INTERVAL_MS = 15_000;
+let _fetchWatcherId  = null;
+let _handleWatcherId = null;
+
+/**
+ * Poll ./weblinks.json every WATCH_INTERVAL_MS.
+ * Calls onchange({ data, hash }) when the content hash differs from
+ * state.lastSyncHash (i.e. the file was changed externally).
+ */
+function startFetchWatcher(onchange) {
+  stopFetchWatcher();
+  _fetchWatcherId = setInterval(async () => {
+    const result = await fetchStaticFile();
+    if (!result) return;
+    if (state.lastSyncHash && result.hash !== state.lastSyncHash) {
+      onchange(result);
+    }
+  }, WATCH_INTERVAL_MS);
+}
+
+function stopFetchWatcher() {
+  if (_fetchWatcherId !== null) {
+    clearInterval(_fetchWatcherId);
+    _fetchWatcherId = null;
+  }
+}
+
+/**
+ * Poll a FileSystemFileHandle every WATCH_INTERVAL_MS.
+ * Calls onchange({ data, hash }) when the content hash changes.
+ */
+function startHandleWatcher(handle, onchange) {
+  stopHandleWatcher();
+  _handleWatcherId = setInterval(async () => {
+    try {
+      const { data, hash } = await loadFromHandle(handle);
+      if (state.lastSyncHash && hash !== state.lastSyncHash) {
+        onchange({ data, hash });
+      }
+    } catch {
+      // ignore transient permission / read errors
+    }
+  }, WATCH_INTERVAL_MS);
+}
+
+function stopHandleWatcher() {
+  if (_handleWatcherId !== null) {
+    clearInterval(_handleWatcherId);
+    _handleWatcherId = null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Manual-mode (Firefox) file import / export
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -179,7 +261,7 @@ export async function createNewFile() {
  * Returns { data, hash, rawText, fileName, error } or null if canceled.
  * 'error' is 'invalid-json' when the file cannot be parsed.
  */
-export function importFromFileInput() {
+function importFromFileInput() {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type   = 'file';
@@ -210,7 +292,7 @@ export function importFromFileInput() {
           return;
         }
         const data      = normalizeData(parsed);
-        const canonical = serializePayload(data.categories, data.weblinks);
+        const canonical = serializePayload(data.categories, data.weblinks, data.pinnedWeblinks ?? []);
         const hash      = await hashString(canonical);
         resolve({ error: null, data, hash, rawText, fileName: file.name, fileSize: file.size, fileLastModified: file.lastModified });
       } catch {
@@ -228,19 +310,34 @@ export function importFromFileInput() {
  * browser download.  Updates the last-sync hash and clears unsaved state.
  * Returns the hash of the exported content.
  */
-export async function exportToFile(categories, weblinks, fileName) {
-  const text = serializePayload(categories, weblinks);
-  const blob = new Blob([text], { type: 'application/json' });
+async function exportToFile(categories, weblinks, fileName) {
+  const jsonText = serializePayload(categories, weblinks, state.settings.pinnedWeblinks);
+
+  // On file:// the dashboard saves as weblinks.js (a JS global-assignment
+  // wrapper) so the next page load can read it via <script src="weblinks.js">.
+  // On HTTP(S) the plain JSON file is sufficient.
+  let content, mimeType, downloadName;
+  if (window.location.protocol === 'file:') {
+    content      = `window.__WEBLINKS_DATA__ = ${jsonText};\n`;
+    mimeType     = 'application/javascript';
+    downloadName = (fileName || DEFAULT_STORAGE_FILE_NAME).replace(/\.json$/, '.js');
+  } else {
+    content      = jsonText;
+    mimeType     = 'application/json';
+    downloadName = fileName || DEFAULT_STORAGE_FILE_NAME;
+  }
+
+  const blob = new Blob([content], { type: mimeType });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = fileName || DEFAULT_STORAGE_FILE_NAME;
+  a.download = downloadName;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 
-  const hash = await hashString(text);
+  const hash = await hashString(jsonText);
   storeLastSyncHash(hash);
   state.unsavedChanges = false;
   _onUnsavedChange?.(false);
@@ -257,13 +354,13 @@ export async function exportToFile(categories, weblinks, fileName) {
  * - Manual mode (Firefox): marks state as unsaved and notifies the UI.
  * Returns the sync hash in direct mode, or null in manual mode.
  */
-export async function persistData() {
+async function persistData() {
   if (state.storageMode === 'direct' && state.fileHandle) {
-    const hash = await saveToHandle(state.fileHandle, state.categories, state.weblinks);
+    const hash = await saveToHandle(state.fileHandle, state.categories, state.weblinks, state.settings.pinnedWeblinks);
     await saveDataCache(state.categories, state.weblinks);
     return hash;
   }
-  if (state.storageMode === 'manual') {
+  if (state.storageMode === 'manual' || state.storageMode === 'static') {
     state.unsavedChanges = true;
     _onUnsavedChange?.(true);
     await saveDataCache(state.categories, state.weblinks);
@@ -294,7 +391,7 @@ async function writeRaw(handle, text) {
  * format-independent and directly comparable to hashes produced by
  * saveToHandle() and exportToFile().
  */
-export async function loadFromHandle(handle) {
+async function loadFromHandle(handle) {
   const rawText = await readRaw(handle);
 
   let parsed;
@@ -305,7 +402,7 @@ export async function loadFromHandle(handle) {
   }
 
   const data      = normalizeData(parsed);
-  const canonical = serializePayload(data.categories, data.weblinks);
+  const canonical = serializePayload(data.categories, data.weblinks, data.pinnedWeblinks ?? []);
   const hash      = await hashString(canonical);
   return { data, hash, rawText };
 }
@@ -315,8 +412,8 @@ export async function loadFromHandle(handle) {
  * Only custom categories (non-default) are stored in the file.
  * Updates the last-sync hash in state and localStorage.
  */
-export async function saveToHandle(handle, categories, weblinks) {
-  const text = serializePayload(categories, weblinks);
+async function saveToHandle(handle, categories, weblinks, pinnedWeblinks = []) {
+  const text = serializePayload(categories, weblinks, pinnedWeblinks);
   await writeRaw(handle, text);
   const hash = await hashString(text);
   storeLastSyncHash(hash);
@@ -331,11 +428,12 @@ export async function saveToHandle(handle, categories, weblinks) {
  * Produce a deterministic JSON string for the given bookmark state.
  * Default categories are never stored in the file.
  */
-export function serializePayload(categories, weblinks) {
+function serializePayload(categories, weblinks, pinnedWeblinks = []) {
   const payload = {
-    version:    STORAGE_VERSION,
-    categories: categories.filter(c => !c.isDefault),
+    version:        STORAGE_VERSION,
+    categories:     categories.filter(c => !c.isDefault),
     weblinks,
+    pinnedWeblinks,
   };
   return JSON.stringify(payload, null, 2);
 }

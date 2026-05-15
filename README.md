@@ -7,64 +7,53 @@ Opens directly from an HTML file — no server required.
 
 ## Quick Start
 
-### 1. Install build tools (one-time)
-
-```bash
-npm install
-```
-
-### 2. Build the JavaScript bundle
-
-```bash
-npm run build
-```
-
-### 3. Open the dashboard
-
 Open `index.html` directly in your browser (Chrome or Edge recommended for full
 file-system write support):
 
 - **Windows:** double-click `index.html`, or drag it into your browser
 - **macOS / Linux:** `open index.html` or `xdg-open index.html`
 
-No dev server is needed.
+No dev server or build step is needed.
 
 ---
 
-## First-Run: Connecting the Storage File
+## Storage File Location
 
-On first launch the dashboard shows a **"Connect Storage File"** overlay.
+**`weblinks.js` must be placed in the same folder as `index.html`.**
 
-| Action | Description |
-|--------|-------------|
-| **Select File** | Choose an existing `weblinks.json` from your machine |
-| **Create New File** | Create a new empty `weblinks.json` via a system save dialog |
+When the dashboard is opened directly from the file system (`file://`), it reads
+data from `weblinks.js`, which sets `window.__WEBLINKS_DATA__` via a `<script>`
+tag — no server or network request needed. If `weblinks.js` is missing or in a
+different directory, the dashboard starts empty. After making changes, use the
+export button to download an updated `weblinks.js` and place it back next to
+`index.html`.
 
-A pre-populated empty file is included at `weblinks.json` in the project root —
-you can point the picker there to get started immediately.
+---
 
-> **Browser support:** The dashboard works in **Firefox**, **Chrome 86+**, and **Edge 86+**.
+## Loading Behavior
+
+On startup the dashboard picks the best available storage method automatically:
+
+| Environment | Behavior |
+|-------------|----------|
+| `file://` + `weblinks.js` present | Data read directly from the script tag; always works |
+| `file://` + Chrome / Edge | Prompts to pick a file once; handle stored in IndexedDB for auto-reload |
+| `file://` + Firefox | Prompts to pick a file; handle stored in IndexedDB; saves via browser download |
+| HTTP(S) | Fetches `./weblinks.json` and polls for changes every 15 s |
+
+> **Browser support:** The dashboard works in **Chrome 86+**, **Edge 86+**, and **Firefox 111+**.
 >
-> Chrome and Edge support the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_Access_API):
-> the file handle is stored in IndexedDB and the file reopens automatically on
-> every page reload. If the handle permission has expired, the dashboard loads
-> from its IndexedDB data cache and shows a **Reconnect** button in the toolbar.
->
-> Firefox does not support the File System Access API and uses a manual
-> import/export workflow: select a JSON file via the **Import JSON File** button
-> on the connect screen, and use the **Save File** toolbar button to download
-> the updated file back to disk after making changes.
-> The last connected file name and its identity (name, size, last-modified) are
-> remembered in `localStorage` so the reconnect screen can name the expected
-> file on the next page load.
+> Chrome and Edge support the [File System Access API](https://developer.mozilla.org/en-US/docs/Web/API/File_System_Access_API)
+> with full read/write access. Firefox 111+ supports read-only file picks;
+> saves are done via a browser download of an updated `weblinks.js`.
 
 ---
 
 ## Page-Load Change Detection
 
-Every time the page reloads and reconnects to the storage file, the dashboard
-computes a content hash of the file and compares it to the hash stored from the
-last successful sync (persisted in `localStorage`).
+Every time the page reloads, the dashboard computes a content hash of the loaded
+data and compares it to the hash stored from the last successful sync (persisted
+in `localStorage`).
 
 - **No change / first load** – the file loads silently and the new hash is stored.
 - **Change detected** – a dialog asks whether to import the updated contents.
@@ -72,13 +61,32 @@ last successful sync (persisted in `localStorage`).
   - **Keep current** – leaves the current state unchanged; the next reload will prompt again.
 - **Different file selected** – detected via file name, size, and `lastModified`; loads silently without prompting and establishes a new sync baseline.
 
-On Chrome/Edge the comparison runs automatically after the stored handle is
-restored. On Firefox you must reselect the file on each page load; the
-reconnect overlay names the last-used file to help you pick the right one.
-
 ---
 
 ## Storage File Format
+
+### `weblinks.js` (used on `file://`)
+
+```js
+window.__WEBLINKS_DATA__ = {
+  "version": 1,
+  "categories": [
+    { "id": "...", "name": "Work", "icon": "briefcase", "isDefault": false }
+  ],
+  "weblinks": [
+    {
+      "id": "...",
+      "url": "https://example.com",
+      "name": "Example",
+      "icon": "globe",
+      "description": "An example site",
+      "category": "..."
+    }
+  ]
+};
+```
+
+### `weblinks.json` (used on HTTP(S))
 
 ```json
 {
@@ -104,7 +112,7 @@ The two protected categories **"Not defined"** (`not-defined`) and
 injected at runtime with fixed IDs.
 
 User settings (theme, language, compact mode, pinned weblinks) are persisted
-separately in `localStorage` and are never written to the JSON file.
+separately in `localStorage` and are never written to the storage file.
 
 ---
 
@@ -159,24 +167,3 @@ The parser handles arbitrarily nested folder structures recursively.
 | **IndexedDB cache** | The last loaded data is cached in IndexedDB so the dashboard can display content even before file permission is re-granted |
 | **Firefox import** | Recursive parser handles arbitrarily nested bookmark folder structures |
 | **Offline / no-server** | Fully static — no backend, no runtime build step |
-
----
-
-## Development
-
-```bash
-# Rebuild once
-npm run build
-
-# Watch mode (auto-rebuild on change)
-npm run watch
-
-# Run tests
-npm test
-```
-
-Source files live in `assets/js/` as ES modules. The build entry point is
-`assets/js/app.js`; output is `assets/js/bundle.js` (IIFE format, ES2020
-target, bundled by [esbuild](https://esbuild.github.io/)).
-
-Tests are located in `tests/` and run with [Vitest](https://vitest.dev/).

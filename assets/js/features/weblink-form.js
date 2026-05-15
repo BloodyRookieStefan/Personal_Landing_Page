@@ -1,18 +1,10 @@
-import { state } from '../state.js';
-import { t } from '../i18n.js';
-import { createWeblink, getFullCategories, getCategoryLabel } from '../schema.js';
-import { validateWeblink, sanitizeString } from '../utils/validation.js';
-import { persistData } from '../storage.js';
-import { openModal, closeModal, buildIconPicker, showToast } from '../render/dialogs.js';
-import { renderSidebar } from '../render/sidebar.js';
-import { renderWeblinks } from '../render/weblinks.js';
-import { DEFAULT_CATEGORY_IDS } from '../config.js';
+// weblink-form.js
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Add weblink
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function openAddWeblinkDialog() {
+function openAddWeblinkDialog() {
   openWeblinkDialog(null);
 }
 
@@ -20,7 +12,7 @@ export function openAddWeblinkDialog() {
 // Edit weblink
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function openEditWeblinkDialog(weblinkId) {
+function openEditWeblinkDialog(weblinkId) {
   const existing = state.weblinks.find(w => w.id === weblinkId);
   if (!existing) return;
   openWeblinkDialog(existing);

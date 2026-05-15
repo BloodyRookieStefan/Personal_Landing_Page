@@ -1,4 +1,4 @@
-import { LS_SETTINGS_KEY, LS_SYNC_HASH_KEY, LS_STORAGE_MODE_KEY, LS_STORAGE_FILE_NAME_KEY, LS_STORAGE_FILE_META_KEY } from './config.js';
+// state.js
 
 /**
  * Central application state.
@@ -48,14 +48,14 @@ const _state = {
   unsavedChanges: false,
 };
 
-export const state = _state;
+const state = _state;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Settings persistence
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Load persisted settings from localStorage into state */
-export function loadPersistedSettings() {
+function loadPersistedSettings() {
   try {
     const raw = localStorage.getItem(LS_SETTINGS_KEY);
     if (raw) {
@@ -73,7 +73,7 @@ export function loadPersistedSettings() {
 }
 
 /** Persist current settings to localStorage */
-export function persistSettings() {
+function persistSettings() {
   const { theme, language, compactMode, pinnedWeblinks } = _state.settings;
   try {
     localStorage.setItem(LS_SETTINGS_KEY, JSON.stringify({ theme, language, compactMode, pinnedWeblinks }));
@@ -83,7 +83,7 @@ export function persistSettings() {
 }
 
 /** Toggle the pinned state of a weblink and persist. */
-export function togglePinWeblink(id) {
+function togglePinWeblink(id) {
   const pins = _state.settings.pinnedWeblinks;
   const idx  = pins.indexOf(id);
   if (idx === -1) {
@@ -95,12 +95,12 @@ export function togglePinWeblink(id) {
 }
 
 /** Return true when the given weblink ID is currently pinned. */
-export function isPinned(id) {
+function isPinned(id) {
   return _state.settings.pinnedWeblinks.includes(id);
 }
 
 /** Update one or more settings fields and persist */
-export function updateSettings(patch) {
+function updateSettings(patch) {
   Object.assign(_state.settings, patch);
   persistSettings();
 }
@@ -109,11 +109,11 @@ export function updateSettings(patch) {
 // Sync hash persistence
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function getStoredSyncHash() {
+function getStoredSyncHash() {
   return localStorage.getItem(LS_SYNC_HASH_KEY) || null;
 }
 
-export function storeLastSyncHash(hash) {
+function storeLastSyncHash(hash) {
   _state.lastSyncHash = hash;
   try {
     localStorage.setItem(LS_SYNC_HASH_KEY, hash);
@@ -131,7 +131,7 @@ export function storeLastSyncHash(hash) {
  * Only the mode, file name, and file identity fields are restored;
  * bookmark data itself is never stored in localStorage.
  */
-export function loadPersistedStorageMeta() {
+function loadPersistedStorageMeta() {
   try {
     const mode = localStorage.getItem(LS_STORAGE_MODE_KEY);
     if (mode === 'direct' || mode === 'manual') _state.storageMode = mode;
@@ -148,7 +148,7 @@ export function loadPersistedStorageMeta() {
 }
 
 /** Persist current storage connection metadata to localStorage. */
-export function persistStorageMeta() {
+function persistStorageMeta() {
   try {
     if (_state.storageMode) {
       localStorage.setItem(LS_STORAGE_MODE_KEY, _state.storageMode);
@@ -174,7 +174,7 @@ export function persistStorageMeta() {
  * Clear all storage connection metadata from state and localStorage.
  * Call on disconnect, permission denial, or malformed stored state.
  */
-export function clearStorageMeta() {
+function clearStorageMeta() {
   _state.storageMode     = null;
   _state.storageFileName = null;
   _state.storageFileMeta = null;

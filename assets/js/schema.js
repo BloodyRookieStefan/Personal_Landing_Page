@@ -1,11 +1,10 @@
-import { DEFAULT_CATEGORY_IDS, RESERVED_CATEGORY_NAMES, STORAGE_VERSION } from './config.js';
-import { sanitizeString } from './utils/validation.js';
+// schema.js
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Default (protected) categories
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const DEFAULT_CATEGORIES = [
+const DEFAULT_CATEGORIES = [
   { id: DEFAULT_CATEGORY_IDS.NOT_DEFINED, name: 'Not defined', icon: 'folder',   isDefault: true },
   { id: DEFAULT_CATEGORY_IDS.IMPORTED,    name: 'Imported',    icon: 'bookmark', isDefault: true },
 ];
@@ -14,7 +13,7 @@ export const DEFAULT_CATEGORIES = [
 // ID generation
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function generateId() {
+function generateId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
@@ -26,7 +25,7 @@ export function generateId() {
  * Create a new Weblink record.
  * All fields are sanitized; category defaults to 'not-defined'.
  */
-export function createWeblink({ url, name, icon = 'globe', description = '', category = DEFAULT_CATEGORY_IDS.NOT_DEFINED } = {}) {
+function createWeblink({ url, name, icon = 'globe', description = '', category = DEFAULT_CATEGORY_IDS.NOT_DEFINED } = {}) {
   return {
     id:          generateId(),
     url:         sanitizeString(url),
@@ -40,7 +39,7 @@ export function createWeblink({ url, name, icon = 'globe', description = '', cat
 /**
  * Create a new custom Category record.
  */
-export function createCategory({ name, icon = 'folder' } = {}) {
+function createCategory({ name, icon = 'folder' } = {}) {
   return {
     id:        generateId(),
     name:      sanitizeString(name),
@@ -60,7 +59,7 @@ const VALID_CATEGORY_IDS = new Set(DEFAULT_CATEGORIES.map(c => c.id));
  * Returns a clean { version, categories, weblinks } object.
  * Default categories are injected at runtime (not stored in file).
  */
-export function normalizeData(raw) {
+function normalizeData(raw) {
   if (!raw || typeof raw !== 'object') {
     raw = {};
   }
@@ -103,10 +102,16 @@ export function normalizeData(raw) {
       category:    allCatIds.has(w.category) ? w.category : DEFAULT_CATEGORY_IDS.NOT_DEFINED,
     }));
 
+  const weblinkIds = new Set(weblinks.map(w => w.id));
+  const pinnedWeblinks = Array.isArray(raw.pinnedWeblinks)
+    ? raw.pinnedWeblinks.filter(id => typeof id === 'string' && id.trim() && weblinkIds.has(id))
+    : null;  // null = field not present in file (keeps localStorage pins intact)
+
   return {
-    version:    typeof raw.version === 'number' ? raw.version : STORAGE_VERSION,
-    categories: customCats,
+    version:        typeof raw.version === 'number' ? raw.version : STORAGE_VERSION,
+    categories:     customCats,
     weblinks,
+    pinnedWeblinks,
   };
 }
 
@@ -118,7 +123,7 @@ export function normalizeData(raw) {
  * Return the localized display label for a category.
  * Default categories use i18n keys; custom categories use their stored name.
  */
-export function getCategoryLabel(cat, t) {
+function getCategoryLabel(cat, t) {
   if (!cat.isDefault) return cat.name;
   if (cat.id === DEFAULT_CATEGORY_IDS.NOT_DEFINED) return t('category.notDefined');
   if (cat.id === DEFAULT_CATEGORY_IDS.IMPORTED)    return t('category.imported');
@@ -128,13 +133,13 @@ export function getCategoryLabel(cat, t) {
 /**
  * Return the full category list: defaults first, then custom.
  */
-export function getFullCategories(customCategories) {
+function getFullCategories(customCategories) {
   return [...DEFAULT_CATEGORIES, ...customCategories];
 }
 
 /**
  * Find a category by ID across defaults + custom.
  */
-export function findCategory(customCategories, id) {
+function findCategory(customCategories, id) {
   return getFullCategories(customCategories).find(c => c.id === id) || null;
 }

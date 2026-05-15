@@ -1,15 +1,9 @@
-import { state } from '../state.js';
-import { t } from '../i18n.js';
-import { getIcon } from '../icons.js';
-import { getFullCategories, getCategoryLabel } from '../schema.js';
-import { byId, clearChildren } from '../utils/dom.js';
-import { isPinned } from '../state.js';
-import { PINNED_CATEGORY_ID } from '../config.js';
+// sidebar.js
 
 // Callback set by app.js
 let _onSelectCategory = null;
 
-export function setSidebarCallbacks({ onSelectCategory }) {
+function setSidebarCallbacks({ onSelectCategory }) {
   _onSelectCategory = onSelectCategory;
 }
 
@@ -17,7 +11,7 @@ export function setSidebarCallbacks({ onSelectCategory }) {
 // Render
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function renderSidebar() {
+function renderSidebar() {
   const container = byId('sidebar-content');
   if (!container) return;
   clearChildren(container);

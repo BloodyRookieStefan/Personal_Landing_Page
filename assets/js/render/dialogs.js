@@ -1,6 +1,4 @@
-import { t } from '../i18n.js';
-import { ICON_KEYS, ICON_LABELS, getIcon } from '../icons.js';
-import { trapFocus, byId } from '../utils/dom.js';
+// dialogs.js
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Modal system
@@ -19,7 +17,7 @@ function getModalRoot() {
  * @param {{ title: string, body: HTMLElement, footer?: HTMLElement, onDismiss?: () => void }} config
  * @returns {{ close: () => void }}
  */
-export function openModal({ title, body, footer, onDismiss }) {
+function openModal({ title, body, footer, onDismiss }) {
   closeModal(); // ensure no stacked modals
 
   _previouslyFocused = document.activeElement;
@@ -103,7 +101,7 @@ export function openModal({ title, body, footer, onDismiss }) {
   return { close: closeModal };
 }
 
-export function closeModal() {
+function closeModal() {
   // Always remove the current Escape handler before clearing the modal DOM
   if (_currentKeyHandler) {
     document.removeEventListener('keydown', _currentKeyHandler);
@@ -132,7 +130,7 @@ export function closeModal() {
 /**
  * Show a confirm dialog. Returns a Promise<boolean>.
  */
-export function showConfirm(message) {
+function showConfirm(message) {
   return new Promise((resolve) => {
     const body = document.createElement('p');
     body.style.lineHeight = '1.6';
@@ -185,7 +183,7 @@ const ICON_SVG = {
  * @param {'success'|'error'|'info'} type
  * @param {number} duration - ms before auto-dismiss (default 3000)
  */
-export function showToast(message, type = 'success', duration = 3000) {
+function showToast(message, type = 'success', duration = 3000) {
   const root = byId('toast-root');
   if (!root) return;
 
@@ -217,7 +215,7 @@ export function showToast(message, type = 'success', duration = 3000) {
  * @param {string} selectedIcon - currently selected icon key
  * @param {(iconKey: string) => void} onChange - called when selection changes
  */
-export function buildIconPicker(selectedIcon, onChange) {
+function buildIconPicker(selectedIcon, onChange) {
   const wrapper = document.createElement('div');
 
   // Preview row

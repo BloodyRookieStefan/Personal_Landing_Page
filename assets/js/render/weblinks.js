@@ -1,25 +1,22 @@
-import { state, togglePinWeblink, isPinned } from '../state.js';
-import { t } from '../i18n.js';
-import { getIcon } from '../icons.js';
-import { findCategory, getCategoryLabel } from '../schema.js';
-import { byId, clearChildren } from '../utils/dom.js';
-import { PINNED_CATEGORY_ID } from '../config.js';
+// weblinks.js
 
 // Callbacks set by app.js
 let _onEditWeblink     = null;
 let _onOpenUrl         = null;
 let _onPinToggle       = null;
+let _onDeleteWeblink   = null;
 
-export function setWeblinkCallbacks({ onEditWeblink, onPinToggle }) {
-  _onEditWeblink = onEditWeblink;
-  _onPinToggle   = onPinToggle || null;
+function setWeblinkCallbacks({ onEditWeblink, onPinToggle, onDeleteWeblink }) {
+  _onEditWeblink   = onEditWeblink;
+  _onPinToggle     = onPinToggle || null;
+  _onDeleteWeblink = onDeleteWeblink || null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Render
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function renderWeblinks() {
+function renderWeblinks() {
   const area = byId('weblink-area');
   if (!area) return;
   clearChildren(area);
@@ -290,15 +287,29 @@ function showContextMenu(e, weblinkId) {
     _onPinToggle?.(weblinkId);
   });
 
+  // Delete item
+  const deleteItem = document.createElement('button');
+  deleteItem.className = 'context-menu-item context-menu-item--danger';
+  deleteItem.type      = 'button';
+  deleteItem.setAttribute('role', 'menuitem');
+  deleteItem.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+  deleteItem.appendChild(document.createTextNode(t('weblink.delete')));
+  deleteItem.addEventListener('click', () => {
+    closeContextMenu();
+    _onDeleteWeblink?.(weblinkId);
+  });
+
   menu.appendChild(editItem);
   menu.appendChild(pinItem);
+  menu.appendChild(deleteItem);
   document.body.appendChild(menu);
   _activeMenu = menu;
 
   // Position menu near the button
+  // menu is position:fixed → use viewport coordinates (no scrollY/scrollX)
   const rect = e.currentTarget.getBoundingClientRect();
-  let top  = rect.bottom + window.scrollY + 4;
-  let left = rect.left   + window.scrollX;
+  let top  = rect.bottom + 4;
+  let left = rect.left;
 
   // Keep inside viewport
   const menuWidth  = 160;
@@ -306,10 +317,10 @@ function showContextMenu(e, weblinkId) {
   // Falls back to 96 (two-item estimate) in environments where layout is unavailable.
   const menuHeight = menu.getBoundingClientRect().height || 96;
   if (left + menuWidth > window.innerWidth) {
-    left = rect.right + window.scrollX - menuWidth;
+    left = rect.right - menuWidth;
   }
-  if (top + menuHeight > window.innerHeight + window.scrollY) {
-    top = rect.top + window.scrollY - menuHeight - 4;
+  if (top + menuHeight > window.innerHeight) {
+    top = rect.top - menuHeight - 4;
   }
 
   menu.style.top  = `${top}px`;

@@ -1,9 +1,7 @@
-import { RESERVED_CATEGORY_NAMES } from '../config.js';
-
 /**
  * Sanitize a string: trim whitespace and collapse internal whitespace.
  */
-export function sanitizeString(str) {
+function sanitizeString(str) {
   if (typeof str !== 'string') return '';
   return str.trim().replace(/\s+/g, ' ');
 }
@@ -12,7 +10,7 @@ export function sanitizeString(str) {
  * Validate a URL string.
  * Returns true if the URL is syntactically valid.
  */
-export function isValidUrl(url) {
+function isValidUrl(url) {
   try {
     const parsed = new URL(url);
     return parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'ftp:';
@@ -24,7 +22,7 @@ export function isValidUrl(url) {
 /**
  * Returns true if the category name is one of the reserved defaults.
  */
-export function isReservedCategoryName(name) {
+function isReservedCategoryName(name) {
   if (typeof name !== 'string') return false;
   return RESERVED_CATEGORY_NAMES.includes(name.trim().toLowerCase());
 }
@@ -33,7 +31,7 @@ export function isReservedCategoryName(name) {
  * Validate weblink form data.
  * Returns an object of { fieldKey: errorKey } pairs (empty = valid).
  */
-export function validateWeblink(data) {
+function validateWeblink(data) {
   const errors = {};
   const url  = sanitizeString(data.url  || '');
   const name = sanitizeString(data.name || '');
@@ -55,7 +53,7 @@ export function validateWeblink(data) {
  * Validate category form data.
  * Returns an object of { fieldKey: errorKey } pairs (empty = valid).
  */
-export function validateCategory(data, existingCategories) {
+function validateCategory(data, existingCategories) {
   const errors = {};
   const name = sanitizeString(data.name || '');
 

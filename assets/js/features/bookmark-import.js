@@ -1,18 +1,10 @@
-import { state } from '../state.js';
-import { t } from '../i18n.js';
-import { createWeblink } from '../schema.js';
-import { persistData } from '../storage.js';
-import { openModal, closeModal, showToast } from '../render/dialogs.js';
-import { renderSidebar } from '../render/sidebar.js';
-import { renderWeblinks } from '../render/weblinks.js';
-import { sanitizeString } from '../utils/validation.js';
-import { DEFAULT_CATEGORY_IDS } from '../config.js';
+// bookmark-import.js
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Open import dialog
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function openBookmarkImportDialog() {
+function openBookmarkImportDialog() {
   const body = buildImportBody();
   openModal({ title: t('import.title'), body });
 }
@@ -181,7 +173,7 @@ async function processFile(file, statusEl) {
 // }
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function extractBookmarks(node) {
+function extractBookmarks(node) {
   const results = [];
 
   function traverse(n) {
